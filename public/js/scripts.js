@@ -14,6 +14,8 @@ $(function(){
         $.post('/image/' + imgId + '/like').done(function(data) {
             $('.likes-count').text(data.likes);
         });
+
+        toastr.success("You liked this post");
     });
 
     $('#btn-delete').on('click', function(event) {
@@ -36,6 +38,7 @@ $(function(){
                     $this.append('<span> Deleted!</span>');
 
                     window.location.href = "/";
+                    toastr.info('Image successfully deleted!');
                 }
             });
         }
