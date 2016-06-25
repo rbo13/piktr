@@ -1,76 +1,119 @@
 var fs = require('fs'),
-path = require('path');
+    path = require('path'),
+    sidebar = require('../helpers/sidebar'),
+    Models = require('../models'),
+    md5 = require('MD5'),
+    cloudinary = require('cloudinary'),
+    multer = require('multer');
 
-var sidebar = require('../helpers/sidebar');
+    var upload = multer({ 'dest': 'uploads/' }).single('file');
 
 module.exports = {
-	index: function(req, res){
-		var viewModel = {
-					image: {
-							uniqueId: 1,
-							title: 'Sample Image 1',
-							description: 'This is a sample.',
-							filename: 'sample1.jpg',
-							views: 0,
-							likes: 0,
-							timestamp: Date.now
-						},
-					comments: [
-						{
-							image_id: 1,
-							email: 'test@testing.com',
-							name: 'Test Tester',
-							gravatar: 'http://lorempixel.com/75/75/animals/1',
-							comment: 'This is a test comment...',
-							timestamp: Date.now
-						},
-						{
-							image_id: 1,
-							email: 'test@testing.com',
-							name: 'Test Tester',
-							gravatar: 'http://lorempixel.com/75/75/animals/2',
-							comment: 'Another followup comment!',
-							timestamp: Date.now
-						}
-					]
-		};
-		sidebar(viewModel, function(viewModel){
-			res.render('index', viewModel);
-		});
-	},
-	create: function(req, res){
-		var saveImage = function() {
-			var possible = 'abcdefghijklmnopqrstuvwxyz0123456789',
-			imgUrl = '';
+    index: function(req, res) {
+      var viewModel = {
+        image: {},
+        comments: []
+      };
 
-			for(var i=0; i < 6; i+=1) {
-				imgUrl += possible.charAt(Math.floor(Math.random() * possible.length));
-			}
+      Models.Image.findOne({ _id: req.params.image_id }, function(err, image){
+        if(err) throw err;
 
-			var tempPath = req.file.path;
-			// ext = path.extname(req.file.name).toLowerCase(),
-			console.log(path.extname(req.file.name).toLowerCase());
-			targetPath = path.resolve('./public/upload/' + imgUrl + ext);
+        if(image){
+          image.views = image.views + 1;
+          viewModel.image = image;
+          image.save();
 
-			if (ext === '.png' || ext === '.jpg' || ext === '.jpeg' || ext === '.gif') {
-				fs.rename(tempPath, targetPath, function(err) {
-					if (err) throw err;
-					
-					res.redirect('/images/'+ imgUrl);
-				});
-			} else {
-				fs.unlink(tempPath, function (err) {
-					if (err) throw err;
-					res.json(500, { error: 'Only image files are allowed.' });
-				});
-			}
-		};
-		saveImage();
-	},
-	like: function(req, res){
-		res.send('The image: like POST controller');
-	},
-	comment: function(req, res){
-		res.send('The image: comment POST controller');
-	}
+          Models.Comment.find(
+              { image_id: image._id},
+              {},
+              { sort: { 'timestamp': 1 }},
+              function(err, comments){
+                  viewModel.comments = comments;
+                  sidebar(viewModel, function(viewModel) {
+                      res.render('image', viewModel);
+                  });
+              }
+          );
+        }else{
+          res.redirect('/');
+        }
+      });
+    },
+    create: function(req, res) {
+
+      upload(req,res,function(err) {
+
+        cloudinary.config({
+          cloud_name: 'whaangbuu',
+          api_key: '591541527659158',
+          api_secret: 'BpYoq2mgj7xCSH85Ffm2B-lT0OQ'
+        });
+
+        cloudinary.uploader.upload(req.file.path, function(result){
+
+          if(result !== null){
+            var newImg = new Models.Image({
+              title: req.body.title,
+              description: req.body.description,
+              filename: result.url
+            });
+
+            newImg.save(function(err, image){
+              res.redirect("/image/" +image._id);
+            });
+          }
+        });
+
+	    });
+
+    },
+
+    like: function(req, res) {
+
+        Models.Image.findOne({ _id: req.params.image_id },
+            function(err, image) {
+                if (!err && image) {
+                    image.likes = image.likes + 1;
+                    image.save(function(err) {
+                        if (err) {
+                            res.json(err);
+                        } else {
+                            res.json({ likes: image.likes });
+                        }
+                    });
+                }
+            });
+    },
+    comment: function(req, res) {
+
+      Models.Image.findOne({ _id: req.params.image_id }, function(err, image) {
+              if (!err && image) {
+                  var newComment = new Models.Comment({
+                    name: req.body.name,
+                    email: req.body.email,
+                    comment: req.body.comment
+                  });
+
+                  newComment.save(function(err, comment){
+                    if(err) throw err;
+
+                    res.redirect('/image/' + image._id + '#' + comment._id);
+                  });
+              } else {
+                  res.redirect('/');
+              }
+      });
+    },
+    remove: function(req, res) {
+        Models.Image.findById({ _id: req.params.image_id }, function(err, image) {
+          if (err) { throw err; }
+
+          image.remove(function(err){
+            if(err)throw err;
+
+            res.json(true);
+          });
+
+        });
+    }
 };
